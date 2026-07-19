@@ -11,8 +11,11 @@ export interface UserDoc {
   _id?: unknown;
   name: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;           
   image: string | null;
+  provider: "credentials" | "google"; 
+  authId?: string;                 
+  suspended?: boolean;
   createdAt: Date;
 }
 

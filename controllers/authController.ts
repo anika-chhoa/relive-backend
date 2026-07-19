@@ -49,12 +49,13 @@ export async function registerUser(req: Request, res: Response) {
 
     const passwordHash = await bcrypt.hash(password!, SALT_ROUNDS);
     const doc: UserDoc = {
-      name: name!.trim(),
-      email: email!.toLowerCase(),
-      passwordHash,
-      image: image || null,
-      createdAt: new Date(),
-    };
+  name: name!.trim(),
+  email: email!.toLowerCase(),
+  passwordHash,
+  image: image || null,
+  provider: "credentials",
+  createdAt: new Date(),
+};
 
     const result = await users.insertOne(doc);
     const user = toPublicUser(doc, result.insertedId.toString());
@@ -112,11 +113,35 @@ export function syncGoogleSession(auth: Auth) {
         return res.status(401).json({ error: "No active Google session" });
       }
 
+      const db = getDB();
+      const users = db.collection<UserDoc>("users");
+
+      const existing = await users.findOne({ email: session.user.email });
+      if (existing?.suspended) {
+        return res.status(403).json({ error: "This account has been suspended" });
+      }
+
+      await users.updateOne(
+        { email: session.user.email },
+        {
+          $set: {
+            name: session.user.name || "",
+            email: session.user.email,
+            image: session.user.image ?? null,
+            provider: "google",
+            authId: session.user.id,
+          },
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true }
+      );
+
       const user: AuthUser = {
         id: session.user.id,
         name: session.user.name ?? undefined,
         email: session.user.email ?? undefined,
         image: session.user.image ?? null,
+        // isAdmin: isAdminEmail(session.user.email),
       };
 
       const token = await signAppJWT(user);
