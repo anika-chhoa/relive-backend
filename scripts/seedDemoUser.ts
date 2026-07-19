@@ -24,6 +24,7 @@ async function seedDemoUser() {
       email: DEMO_EMAIL,
       passwordHash,
       image: null,
+      role: "user",
        provider: "credentials",
       createdAt: new Date(),
     });

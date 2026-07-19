@@ -1,12 +1,19 @@
-import bcrypt from "bcryptjs";
 import type { Request, Response } from "express";
+import bcrypt from "bcryptjs";
 import { getDB } from "../config/db.js";
+import { signAppJWT, setAuthCookie, clearAuthCookie } from "../lib/jwt.js";
 import { isAdminEmail } from "../lib/adminEmails.js";
 import type { Auth } from "../lib/auth.js";
-import { clearAuthCookie, setAuthCookie, signAppJWT } from "../lib/jwt.js";
-import type { AuthUser, UserDoc } from "../types/domain.js";
+import type { UserDoc, AuthUser } from "../types/domain.js";
 
 const SALT_ROUNDS = 10;
+
+// role === "admin" is the primary source of truth. ADMIN_EMAILS stays as
+// a fallback so you can bootstrap the very first admin before any UI to
+// promote users exists.
+function computeIsAdmin(doc: Pick<UserDoc, "role" | "email">): boolean {
+  return doc.role === "admin" || isAdminEmail(doc.email);
+}
 
 function toPublicUser(doc: UserDoc, id: string): AuthUser {
   return {
@@ -14,7 +21,7 @@ function toPublicUser(doc: UserDoc, id: string): AuthUser {
     name: doc.name,
     email: doc.email,
     image: doc.image,
-    isAdmin: isAdminEmail(doc.email),
+    isAdmin: computeIsAdmin(doc),
   };
 }
 
@@ -40,10 +47,8 @@ export async function registerUser(req: Request, res: Response) {
 
     const errors: Record<string, string> = {};
     if (!name || !name.trim()) errors.name = "Full name is required";
-    if (!email || !/^\S+@\S+\.\S+$/.test(email))
-      errors.email = "Enter a valid email address";
-    if (!password || password.length < 8)
-      errors.password = "Password must be at least 8 characters";
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) errors.email = "Enter a valid email address";
+    if (!password || password.length < 8) errors.password = "Password must be at least 8 characters";
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({ errors });
     }
@@ -53,9 +58,7 @@ export async function registerUser(req: Request, res: Response) {
 
     const existing = await users.findOne({ email: email!.toLowerCase() });
     if (existing) {
-      return res
-        .status(409)
-        .json({ error: "An account with this email already exists" });
+      return res.status(409).json({ error: "An account with this email already exists" });
     }
 
     const passwordHash = await bcrypt.hash(password!, SALT_ROUNDS);
@@ -65,10 +68,11 @@ export async function registerUser(req: Request, res: Response) {
       passwordHash,
       image: image || null,
       provider: "credentials",
+      role: "user", // ← every new registration gets this explicitly
       createdAt: new Date(),
     };
 
-    const result = await users.insertOne(doc as any);
+    const result = await users.insertOne(doc);
     const user = toPublicUser(doc, result.insertedId.toString());
 
     const token = await signAppJWT(user);
@@ -83,10 +87,7 @@ export async function registerUser(req: Request, res: Response) {
 
 export async function loginUser(req: Request, res: Response) {
   try {
-    const { email, password } = req.body as {
-      email?: string;
-      password?: string;
-    };
+    const { email, password } = req.body as { email?: string; password?: string };
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
@@ -98,7 +99,7 @@ export async function loginUser(req: Request, res: Response) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    const valid = await bcrypt.compare(password, doc.passwordHash);
+    const valid = await bcrypt.compare(password, doc.passwordHash || "");
     if (!valid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
@@ -133,13 +134,11 @@ export function syncGoogleSession(auth: Auth) {
       const db = getDB();
       const users = db.collection<UserDoc>("users");
 
-      const existing = await users.findOne({ email: session.user.email });
-      if (existing?.suspended) {
-        return res
-          .status(403)
-          .json({ error: "This account has been suspended" });
-      }
-
+      // Mirror the Google account into our own `users` collection
+      // (keyed by email) so admin panel / role / suspend logic has one
+      // place to look, regardless of login method. $setOnInsert makes
+      // sure role/createdAt are only set the FIRST time — a later login
+      // never overwrites a role an admin promoted.
       await users.updateOne(
         { email: session.user.email },
         {
@@ -150,17 +149,22 @@ export function syncGoogleSession(auth: Auth) {
             provider: "google",
             authId: session.user.id,
           },
-          $setOnInsert: { createdAt: new Date() },
+          $setOnInsert: { role: "user", createdAt: new Date() },
         },
-        { upsert: true },
+        { upsert: true }
       );
+
+      const mirrored = await users.findOne({ email: session.user.email });
+      if (mirrored?.suspended) {
+        return res.status(403).json({ error: "This account has been suspended" });
+      }
 
       const user: AuthUser = {
         id: session.user.id,
         name: session.user.name ?? undefined,
         email: session.user.email ?? undefined,
         image: session.user.image ?? null,
-        // isAdmin: isAdminEmail(session.user.email),
+        isAdmin: mirrored ? computeIsAdmin(mirrored) : isAdminEmail(session.user.email),
       };
 
       const token = await signAppJWT(user);
@@ -177,7 +181,22 @@ export function syncGoogleSession(auth: Auth) {
 // --- Shared: who am I / log out -----------------------------------------
 
 export async function me(req: Request, res: Response) {
-  res.json({ user: { ...req.user, isAdmin: isAdminEmail(req.user?.email) } });
+  // Re-check role/suspension fresh from the DB on every call — a role
+  // change or suspension by an admin takes effect immediately, without
+  // waiting for the JWT to expire or the user to log in again.
+  try {
+    const db = getDB();
+    const doc = await db.collection<UserDoc>("users").findOne({ email: req.user?.email });
+    res.json({
+      user: {
+        ...req.user,
+        isAdmin: doc ? computeIsAdmin(doc) : isAdminEmail(req.user?.email),
+      },
+    });
+  } catch (err) {
+    console.error("[auth] me failed:", err);
+    res.json({ user: req.user });
+  }
 }
 
 export function logout(req: Request, res: Response) {

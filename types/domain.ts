@@ -12,10 +12,11 @@ export interface UserDoc {
   _id?: unknown;
   name: string;
   email: string;
-  passwordHash?: string;           
+  passwordHash?: string;
   image: string | null;
-  provider: "credentials" | "google"; 
-  authId?: string;                 
+  provider: "credentials" | "google";
+  authId?: string;
+  role: "user" | "admin";
   suspended?: boolean;
   createdAt: Date;
 }
