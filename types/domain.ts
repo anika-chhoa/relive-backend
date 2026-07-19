@@ -104,3 +104,11 @@ export interface ImproveDescriptionInput {
   text: string;
   field: "short" | "full";
 }
+
+export interface ChatMessage {
+  _id?: unknown;
+  userId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: Date;
+}

@@ -72,7 +72,7 @@ export async function registerUser(req: Request, res: Response) {
       createdAt: new Date(),
     };
 
-    const result = await users.insertOne(doc);
+    const result = await users.insertOne(doc as any);
     const user = toPublicUser(doc, result.insertedId.toString());
 
     const token = await signAppJWT(user);
