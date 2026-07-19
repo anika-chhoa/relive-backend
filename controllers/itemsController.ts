@@ -81,7 +81,7 @@ export async function createItem(req: Request, res: Response) {
       updatedAt: new Date(),
     };
 
-    const result = await db.collection<Item>("items").insertOne(doc);
+    const result = await db.collection<Item>("items").insertOne(doc as any);
     res.status(201).json({ id: result.insertedId, ...doc });
   } catch (err) {
     console.error("[items] createItem failed:", err);
@@ -215,6 +215,25 @@ export async function getItemById(req: Request, res: Response) {
   } catch (err) {
     console.error("[items] getItemById failed:", err);
     res.status(500).json({ error: "Could not load this item" });
+  }
+}
+
+
+// Public — powers the homepage Categories section (item count per card).
+export async function getCategoryCounts(req: Request, res: Response) {
+  try {
+    const db = getDB();
+    const rows = await db
+      .collection<Item>("items")
+      .aggregate([
+        { $match: { status: "active" } },
+        { $group: { _id: "$category", count: { $sum: 1 } } },
+      ])
+      .toArray();
+    res.json({ counts: rows.map((r) => ({ category: r._id, count: r.count })) });
+  } catch (err) {
+    console.error("[items] getCategoryCounts failed:", err);
+    res.status(500).json({ error: "Could not load category counts" });
   }
 }
 

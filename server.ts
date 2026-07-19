@@ -14,6 +14,8 @@ import uploadRoutes from "./routes/upload.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
+import statsRoutes from "./routes/stats.routes.js";
+
 
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -56,6 +58,7 @@ async function start() {
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/chat", chatRoutes);
+  app.use("/api/stats", statsRoutes);
   app.get("/health", (req, res) => res.json({ status: "ok" }));
   
 
