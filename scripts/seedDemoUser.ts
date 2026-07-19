@@ -24,6 +24,7 @@ async function seedDemoUser() {
       email: DEMO_EMAIL,
       passwordHash,
       image: null,
+       provider: "credentials",
       createdAt: new Date(),
     });
     console.log(`[seed] Demo user created: ${DEMO_EMAIL}`);

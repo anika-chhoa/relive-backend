@@ -1,16 +1,18 @@
+import { toNodeHandler } from "better-auth/node";
+import cookieParser from "cookie-parser";
+import cors from "cors";
 import "dotenv/config";
 import express from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-import { toNodeHandler } from "better-auth/node";
 import { connectDB } from "./config/db.js";
 import { createAuth } from "./lib/auth.js";
-import { createAuthRoutes } from "./routes/auth.routes.js";
-import uploadRoutes from "./routes/upload.routes.js";
-import itemRoutes from "./routes/items.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
-import reviewRoutes from "./routes/reviews.routes.js";
+import { createAuthRoutes } from "./routes/auth.routes.js";
+import itemRoutes from "./routes/items.routes.js";
 import paymentsRoutes from "./routes/payments.routes.js";
+import reviewRoutes from "./routes/reviews.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -25,7 +27,7 @@ async function start() {
     cors({
       origin: FRONTEND_URL,
       credentials: true,
-    })
+    }),
   );
   app.use(cookieParser());
 
@@ -50,7 +52,8 @@ async function start() {
   app.use("/api/items", itemRoutes);
   app.use("/api/ai", aiRoutes);
   app.use("/api/reviews", reviewRoutes);
-
+  app.use("/api/dashboard", dashboardRoutes);
+  app.use("/api/admin", adminRoutes);
   app.get("/health", (req, res) => res.json({ status: "ok" }));
 
   app.listen(PORT, () => {

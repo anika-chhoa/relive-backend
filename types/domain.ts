@@ -3,6 +3,7 @@ export interface AuthUser {
   email?: string;
   name?: string;
   image?: string | null;
+  isAdmin?: boolean; 
 }
 
 // Only credential (email/password) users live here — Google users are

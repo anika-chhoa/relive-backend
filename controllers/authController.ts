@@ -1,14 +1,21 @@
-import type { Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import type { Request, Response } from "express";
 import { getDB } from "../config/db.js";
-import { signAppJWT, setAuthCookie, clearAuthCookie } from "../lib/jwt.js";
+import { isAdminEmail } from "../lib/adminEmails.js";
 import type { Auth } from "../lib/auth.js";
-import type { UserDoc, AuthUser } from "../types/domain.js";
+import { clearAuthCookie, setAuthCookie, signAppJWT } from "../lib/jwt.js";
+import type { AuthUser, UserDoc } from "../types/domain.js";
 
 const SALT_ROUNDS = 10;
 
 function toPublicUser(doc: UserDoc, id: string): AuthUser {
-  return { id, name: doc.name, email: doc.email, image: doc.image };
+  return {
+    id,
+    name: doc.name,
+    email: doc.email,
+    image: doc.image,
+    isAdmin: isAdminEmail(doc.email),
+  };
 }
 
 function toFetchHeaders(expressHeaders: Request["headers"]): Headers {
@@ -33,8 +40,10 @@ export async function registerUser(req: Request, res: Response) {
 
     const errors: Record<string, string> = {};
     if (!name || !name.trim()) errors.name = "Full name is required";
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) errors.email = "Enter a valid email address";
-    if (!password || password.length < 8) errors.password = "Password must be at least 8 characters";
+    if (!email || !/^\S+@\S+\.\S+$/.test(email))
+      errors.email = "Enter a valid email address";
+    if (!password || password.length < 8)
+      errors.password = "Password must be at least 8 characters";
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({ errors });
     }
@@ -44,20 +53,22 @@ export async function registerUser(req: Request, res: Response) {
 
     const existing = await users.findOne({ email: email!.toLowerCase() });
     if (existing) {
-      return res.status(409).json({ error: "An account with this email already exists" });
+      return res
+        .status(409)
+        .json({ error: "An account with this email already exists" });
     }
 
     const passwordHash = await bcrypt.hash(password!, SALT_ROUNDS);
     const doc: UserDoc = {
-  name: name!.trim(),
-  email: email!.toLowerCase(),
-  passwordHash,
-  image: image || null,
-  provider: "credentials",
-  createdAt: new Date(),
-};
+      name: name!.trim(),
+      email: email!.toLowerCase(),
+      passwordHash,
+      image: image || null,
+      provider: "credentials",
+      createdAt: new Date(),
+    };
 
-    const result = await users.insertOne(doc);
+    const result = await users.insertOne(doc as any);
     const user = toPublicUser(doc, result.insertedId.toString());
 
     const token = await signAppJWT(user);
@@ -72,7 +83,10 @@ export async function registerUser(req: Request, res: Response) {
 
 export async function loginUser(req: Request, res: Response) {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
+    const { email, password } = req.body as {
+      email?: string;
+      password?: string;
+    };
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
@@ -87,6 +101,9 @@ export async function loginUser(req: Request, res: Response) {
     const valid = await bcrypt.compare(password, doc.passwordHash);
     if (!valid) {
       return res.status(401).json({ error: "Invalid email or password" });
+    }
+    if (doc.suspended) {
+      return res.status(403).json({ error: "This account has been suspended" });
     }
 
     const user = toPublicUser(doc, doc._id!.toString());
@@ -118,7 +135,9 @@ export function syncGoogleSession(auth: Auth) {
 
       const existing = await users.findOne({ email: session.user.email });
       if (existing?.suspended) {
-        return res.status(403).json({ error: "This account has been suspended" });
+        return res
+          .status(403)
+          .json({ error: "This account has been suspended" });
       }
 
       await users.updateOne(
@@ -133,7 +152,7 @@ export function syncGoogleSession(auth: Auth) {
           },
           $setOnInsert: { createdAt: new Date() },
         },
-        { upsert: true }
+        { upsert: true },
       );
 
       const user: AuthUser = {
@@ -158,7 +177,7 @@ export function syncGoogleSession(auth: Auth) {
 // --- Shared: who am I / log out -----------------------------------------
 
 export async function me(req: Request, res: Response) {
-  res.json({ user: req.user });
+  res.json({ user: { ...req.user, isAdmin: isAdminEmail(req.user?.email) } });
 }
 
 export function logout(req: Request, res: Response) {
