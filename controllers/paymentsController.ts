@@ -108,3 +108,37 @@ export async function getSessionStatus(req: Request, res: Response) {
     res.status(404).json({ error: "Session not found" });
   }
 }
+
+
+export async function confirmPayment(req: Request, res: Response) {
+  try {
+    const { sessionId } = req.params;
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ error: "Payment not completed" });
+    }
+
+    const itemId = session.metadata?.itemId;
+    const buyerId = session.metadata?.buyerId;
+    if (!itemId || !ObjectId.isValid(itemId)) {
+      return res.status(400).json({ error: "Missing item reference on this session" });
+    }
+
+    const db = getDB();
+    const items = db.collection<Item>("items");
+    const item = await items.findOne({ _id: new ObjectId(itemId) as any });
+
+    if (item && item.status !== "sold") {
+      await items.updateOne(
+        { _id: new ObjectId(itemId) as any },
+        { $set: { status: "sold", buyerId, soldAt: new Date(), updatedAt: new Date() } }
+      );
+    }
+
+    res.json({ itemId, status: "sold" });
+  } catch (err) {
+    console.error("[payments] confirmPayment failed:", err);
+    res.status(500).json({ error: "Could not confirm this payment" });
+  }
+}

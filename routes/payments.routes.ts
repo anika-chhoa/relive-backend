@@ -5,6 +5,7 @@ import {
   createCheckoutSession,
   handleWebhook,
   getSessionStatus,
+  confirmPayment,
 } from "../controllers/paymentsController.js";
 
 const router = Router();
@@ -16,5 +17,6 @@ router.post("/create-checkout-session", express.json(), verifyJWT, createCheckou
 router.post("/webhook", express.raw({ type: "application/json" }), handleWebhook);
 
 router.get("/session/:sessionId", getSessionStatus);
+router.post("/confirm/:sessionId", express.json(), verifyJWT, confirmPayment);
 
 export default router;
