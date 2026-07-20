@@ -6,6 +6,7 @@ import {
   loginUser,
   syncGoogleSession,
   me,
+  updateMe,
   logout,
 } from "../controllers/authController.js";
 import type { Auth } from "../lib/auth.js";
@@ -21,6 +22,7 @@ export function createAuthRoutes(auth: Auth) {
   router.post("/login", express.json(), loginUser);
   router.post("/sync-session", syncGoogleSession(auth));
   router.get("/me", verifyJWT, me);
+  router.patch("/me", verifyJWT, express.json(), updateMe);
   router.post("/logout", logout);
 
   return router;

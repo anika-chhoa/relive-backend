@@ -178,6 +178,45 @@ export function syncGoogleSession(auth: Auth) {
   };
 }
 
+export async function updateMe(req: Request, res: Response) {
+  try {
+    const { name, image } = req.body as { name?: string; image?: string | null };
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    const db = getDB();
+    const users = db.collection<UserDoc>("users");
+
+    await users.updateOne(
+      { email: req.user?.email },
+      { $set: { name: name.trim(), image: image ?? null } }
+    );
+
+    const updated = await users.findOne({ email: req.user?.email });
+    if (!updated) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user: AuthUser = {
+      id: req.user!.id,
+      name: updated.name,
+      email: updated.email,
+      image: updated.image,
+      isAdmin: computeIsAdmin(updated),
+    };
+
+    const token = await signAppJWT(user);
+    setAuthCookie(res, token);
+
+    res.json({ user });
+  } catch (err) {
+    console.error("[auth] updateMe failed:", err);
+    res.status(500).json({ error: "Could not update your profile" });
+  }
+}
+
 // --- Shared: who am I / log out -----------------------------------------
 
 export async function me(req: Request, res: Response) {
