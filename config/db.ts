@@ -13,7 +13,7 @@ let db: Db | null = null;
 
 export async function connectDB(): Promise<Db> {
   if (db) return db;
-  await client.connect();
+  // await client.connect();
   db = client.db(dbName);
   console.log(`[db] Connected to MongoDB database: ${dbName}`);
   return db;
